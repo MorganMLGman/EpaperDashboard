@@ -1,0 +1,60 @@
+substitutions: 
+  ap_password: "123456789"
+
+esphome:
+  name: epaper-dashboard
+  friendly_name: E-Paper Dashboard
+  name_add_mac_suffix: true
+
+esp32:
+  board: lolin_s2_mini
+  variant: ESP32S2
+  framework:
+    type: esp-idf
+    version: recommended
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+packages: 
+  esp32_package:
+    url: https://github.com/MorganMLGman/ESPHomeBaseFiles
+    files:
+      - base.yaml
+      - ESP32/diagnostic.yaml
+      # - ESP32/web_server.yaml
+    ref: master
+    refresh: 0s
+
+spi:
+  clk_pin: GPIO36
+  mosi_pin: GPIO35
+
+font:
+  - file: "gfonts://Ubuntu Mono"
+    id: roboto_20
+    size: 20
+
+display:
+  - platform: waveshare_epaper
+    id: epaper_display
+    cs_pin: GPIO37
+    dc_pin: GPIO38
+    busy_pin: GPIO40
+    reset_pin: GPIO39
+    model: 4.20in-bV2-bwr
+    update_interval: never
+    lambda: |-
+      const auto BLACK   = Color(0,   0,   0,   0);
+      const auto RED     = Color(255, 0,   0,   0);
+      const auto WHITE   = Color(255, 255, 255, 0);
+
+      it.fill(COLOR_ON);
+      it.print(0, 0, id(roboto_20), BLACK, "Hello World!");
+      it.print(0, 40, id(roboto_20), RED, "Hello World!");
+
+status_led:
+  pin: 
+    number: GPIO15
+    inverted: true

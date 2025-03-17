@@ -1,0 +1,12 @@
+packages:
+  core: !include project-template-esp32-s3.yaml
+
+esphome:
+  project:
+    name: esphome.project-template
+    version: dev
+
+dashboard_import:
+  package_import_url: github://MorganMLGman/EpaperDashboard/epaper-dashboard-s2-mini.yaml@main
+
+improv_serial:
