@@ -1,10 +1,14 @@
 substitutions: 
   ap_password: "123456789"
+  ota_password: "123456789"
 
 esphome:
   name: epaper-dashboard
   friendly_name: E-Paper Dashboard
   name_add_mac_suffix: true
+  on_boot:
+    then:
+      ds1307.read_time:
 
 esp32:
   board: lolin_s2_mini
@@ -17,6 +21,13 @@ psram:
   mode: octal
   speed: 80MHz
 
+wifi: 
+  power_save_mode: none
+  use_address: "192.168.1.111"
+  enable_btm: true
+  enable_rrm: true
+
+
 packages: 
   esp32_package:
     url: https://github.com/MorganMLGman/ESPHomeBaseFiles
@@ -27,14 +38,222 @@ packages:
     ref: master
     refresh: 0s
 
+http_request:
+
+update:
+  - platform: http_request
+    id: update_http_request
+    name: Firmware Update
+    source: https://morganmlgman.github.io/EpaperDashboard/firmware/epaper-dashboard.manifest.json
+
+ota:
+  - platform: esphome
+    id: ota_esphome
+    password: ${ota_password}
+  - platform: http_request
+    id: ota_http
+
+api:
+
 spi:
   clk_pin: GPIO36
   mosi_pin: GPIO35
 
+i2c:
+  sda: GPIO2
+  scl: GPIO3
+
+globals:
+  - id: co2_level
+    type: std::string
+    restore_value: yes
+    initial_value: '"FRESH"'
+
+time:
+  - platform: ds1307
+    id: ds1307_time
+    update_interval: never
+  - platform: homeassistant
+    id: !extend homeassistant_time
+    on_time_sync:
+      then:
+        ds1307.write_time:
+
+sensor:
+  - platform: homeassistant
+    entity_id: sensor.thp_biuro_pressure
+    id: ha_pressure
+
+  - platform: scd4x
+    address: 0x62
+    automatic_self_calibration: true
+    ambient_pressure_compensation_source: ha_pressure
+    measurement_mode: low_power_periodic
+    update_interval: 60s
+    co2:
+      id: co2level
+      name: "CO² Level"
+      filters:
+        - throttle_average: 5min
+        - filter_out: nan
+      
+      on_value: 
+        then:
+          - lambda: |-
+              if (x < 400) {
+                id(co2_level) = "FRESH";
+              } else if (x < 800) {
+                id(co2_level) = "LOW";
+              } else if (x < 1000) {
+                id(co2_level) = "MODERATE";
+              } else if (x < 1500) {
+                id(co2_level) = "ELEVATED";
+              } else if (x < 2000) {
+                id(co2_level) = "HIGH";
+              } else if (x < 3000) {
+                id(co2_level) = "VERY HIGH";
+              } else {
+                id(co2_level) = "CRITICAL";
+              }
+              id(co2levelText).publish_state(id(co2_level).c_str());
+    temperature:  
+      name: "Temperature"
+      disabled_by_default: True
+    humidity:
+      name: "Humidity"
+      disabled_by_default: True
+
+  - platform: homeassistant
+    id: outdoor_temperature
+    entity_id: sensor.th_balkon_temperature
+
+text_sensor:
+  - platform: template
+    id: co2levelText
+    name: "CO² Concentration"
+    icon: "mdi:molecule-co2"
+    update_interval: never
+    filters:
+      - to_upper:
+
+  - platform: homeassistant
+    id: weather_condition
+    entity_id: sensor.openweathermap_condition
+    internal: true
+
+  - platform: homeassistant
+    id: spotify_status
+    entity_id: media_player.spotify_kacper_cholody
+    internal: true
+    filters:
+      - to_upper:
+
+  - platform: homeassistant
+    id: spotify_source
+    entity_id: media_player.spotify_kacper_cholody
+    attribute: source
+    internal: true
+
 font:
   - file: "gfonts://Ubuntu Mono"
-    id: roboto_20
+    id: ubuntu_20
     size: 20
+    extras:
+      - file: "gfonts://Source Code Pro"
+        glyphs: [ "⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹", "₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈", "₉" ]
+  - file: "gfonts://Ubuntu Mono"
+    id: ubuntu_30
+    size: 30
+
+color:
+  - id: color_black
+    red: 0%
+    green: 0%
+    blue: 0%
+  - id: color_red
+    red: 100%
+    green: 0%
+    blue: 0%
+  - id: color_white
+    red: 100%
+    green: 100%
+    blue: 100%
+
+graph:
+  - id: co2graph
+    duration: 12h
+    width: 200
+    height: 100
+    min_value: 0
+    x_grid: 3h
+    y_grid: 500
+    traces:
+      - sensor: co2level
+        line_thickness: 2
+        color: color_black
+
+image:
+  binary:
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/weather_icons/cloud.png"
+      id: image_cloud
+      resize: 32x32
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/weather_icons/cloudy-day.png"
+      id: image_cloudy_day
+      resize: 32x32
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/weather_icons/cloudy-night.png"
+      id: image_cloudy_night
+      resize: 32x32
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/weather_icons/cloudy.png"
+      id: image_cloudy
+      resize: 32x32
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/weather_icons/cold.png"
+      id: image_cold
+      resize: 32x32
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/weather_icons/hot.png"
+      id: image_hot
+      resize: 32x32
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/weather_icons/humidity.png"
+      id: image_humidity
+      resize: 32x32
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/weather_icons/mist.png"
+      id: image_mist
+      resize: 32x32
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/weather_icons/night.png"
+      id: image_night
+      resize: 32x32
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/weather_icons/rain.png"
+      id: image_rain
+      resize: 32x32
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/weather_icons/rainy.png"
+      id: image_rainy
+      resize: 32x32
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/weather_icons/snow.png"
+      id: image_snowy
+      resize: 32x32
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/weather_icons/sun.png"
+      id: image_sun
+      resize: 32x32
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/weather_icons/thunder.png"
+      id: image_thunder
+      resize: 32x32
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/weather_icons/wind-vane1.png"
+      id: image_wind_vane1
+      resize: 32x32
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/weather_icons/wind-vane2.png"
+      id: image_wind_vane2
+      resize: 32x32
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/weather_icons/windy1.png"
+      id: image_windy1
+      resize: 32x32
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/weather_icons/windy2.png"
+      id: image_windy2
+      resize: 32x32
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/weather_icons/rainbow.png"
+      id: image_rainbow
+      resize: 32x32
+    - file: "https://raw.githubusercontent.com/MorganMLGman/ESPHomeBaseFiles/refs/heads/master/icons/app_icons/spotify.png"
+      id: image_spotify
+      resize: 32x32
 
 display:
   - platform: waveshare_epaper
@@ -46,15 +265,85 @@ display:
     model: 4.20in-bV2-bwr
     update_interval: never
     lambda: |-
-      const auto BLACK   = Color(0,   0,   0,   0);
-      const auto RED     = Color(255, 0,   0,   0);
-      const auto WHITE   = Color(255, 255, 255, 0);
-
       it.fill(COLOR_ON);
-      it.print(0, 0, id(roboto_20), BLACK, "Hello World!");
-      it.print(0, 40, id(roboto_20), RED, "Hello World!");
+      it.strftime(0, 0, id(ubuntu_30), id(color_red), "%a, %d.%m.%y", id(ds1307_time).now());
+
+      auto str_weather = id(weather_condition).state;
+      if (id(weather_condition).state == "clear-night") {
+        it.image(0, 32, id(image_night), id(color_black), id(color_white));
+      }
+      else if (id(weather_condition).state == "cloudy") {
+        it.image(0, 32, id(image_cloudy), id(color_black), id(color_white));
+      }
+      else if (id(weather_condition).state == "exceptional") {
+        it.image(0, 32, id(image_rainbow), id(color_black), id(color_white));
+      }
+      else if (id(weather_condition).state == "fog") {
+        it.image(0, 32, id(image_mist), id(color_black), id(color_white));
+      }
+      else if (id(weather_condition).state == "hail") {
+        it.image(0, 32, id(image_snowy), id(color_black), id(color_white));
+      }
+      else if (id(weather_condition).state == "lightning") {
+        it.image(0, 32, id(image_thunder), id(color_black), id(color_white));
+      }
+      else if (id(weather_condition).state == "lightning-rainy") {
+        it.image(0, 32, id(image_thunder), id(color_black), id(color_white));
+      }
+      else if (id(weather_condition).state == "partlycloudy") {
+        it.image(0, 32, id(image_cloudy_day), id(color_black), id(color_white));
+      }
+      else if (id(weather_condition).state == "pouring") {
+        it.image(0, 32, id(image_rainy), id(color_black), id(color_white));
+      }
+      else if (id(weather_condition).state == "rainy") {
+        it.image(0, 32, id(image_rainy), id(color_black), id(color_white));
+      }
+      else if (id(weather_condition).state == "snowy") {
+        it.image(0, 32, id(image_snowy), id(color_black), id(color_white));
+      }
+      else if (id(weather_condition).state == "snowy-rainy") {
+        it.image(0, 32, id(image_snowy), id(color_black), id(color_white));
+      }
+      else if (id(weather_condition).state == "sunny") {
+        it.image(0, 32, id(image_sun), id(color_black), id(color_white));
+      }
+      else if (id(weather_condition).state == "windy") {
+        it.image(0, 32, id(image_windy1), id(color_black), id(color_white));
+      }
+      else if (id(weather_condition).state == "windy-variant") {
+        it.image(0, 32, id(image_windy2), id(color_black), id(color_white));
+      }
+      else {
+        it.image(0, 32, id(image_rainbow), id(color_black), id(color_white));
+      }
+
+      it.printf(35, 32, id(ubuntu_30), id(color_black), TextAlign::TOP_LEFT, "%.1f°C", id(outdoor_temperature).state);
+
+      it.image(0, 66, id(image_spotify), id(color_black), id(color_white));
+      it.printf(35, 82, id(ubuntu_20), id(color_black), TextAlign::CENTER_LEFT, "%s", id(spotify_status).state.c_str());
+      it.printf(0, 100, id(ubuntu_20), id(color_black), TextAlign::TOP_LEFT, "%s", id(spotify_source).state.c_str());
+
+      it.graph(200, 0, id(co2graph), color_red);
+      it.print(200, 102, id(ubuntu_20), id(color_black), TextAlign::TOP_LEFT, "CO²");
+      it.printf(399, 102, id(ubuntu_20), id(color_black), TextAlign::TOP_RIGHT, "%4.0f %s", id(co2level).state, id(co2levelText).state.c_str());
+
+      it.filled_rectangle(0, 124, 400, 2, id(color_black));
 
 status_led:
   pin: 
     number: GPIO15
     inverted: true
+
+button:
+  - platform: template
+    name: Refresh Display
+    id: refresh_display
+    on_press:
+      - component.update: epaper_display
+
+interval:
+  - interval: 5min
+    startup_delay: 1min
+    then:
+      - component.update: epaper_display
